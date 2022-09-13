@@ -115,6 +115,196 @@ func (vde ValueDecoderError) Error() string {
 	return fmt.Sprintf("%s can only decode valid and settable %s, but got %s", vde.Name, strings.Join(typeKinds, ", "), received)
 }
 
+// TypeDecoderError is an error returned from a TypeDecoder when the provided type can't be
+// decoded by the TypeDecoder.
+type TypeDecoderError struct {
+	Name     string
+	Types    []reflect.Type
+	Kinds    []reflect.Kind
+	Received bsontype.Type
+}
+
+// Error implements the error interface.
+func (tde TypeDecoderError) Error() string {
+	typeKinds := make([]string, 0, len(tde.Types)+len(tde.Kinds))
+	for _, t := range tde.Types {
+		typeKinds = append(typeKinds, t.String())
+	}
+	for _, k := range tde.Kinds {
+		if k == reflect.Map {
+			typeKinds = append(typeKinds, "map[string]*")
+			continue
+		}
+		typeKinds = append(typeKinds, k.String())
+	}
+	return fmt.Sprintf("cannot decode %s into a %s", tde.Received.String(), strings.Join(typeKinds, ", "))
+}
+
+// MultiDecodeError represents mutliple wrapped DecodeError that occurs when unmarshalling BSON bytes into a native Go type.
+type MultiDecodeError struct {
+	wrapped []error
+}
+
+// Error implements the error interface.
+func (de *MultiDecodeError) Error() string {
+	ret := ""
+	if len(de.wrapped) > 0 {
+		ret = "Decoding errors => \n"
+		for i, err := range de.wrapped {
+			de, ok := err.(*DecodeError)
+			if ok {
+				if i > 0 {
+					ret = fmt.Sprintf("%s\n\t%s", ret, de.Error())
+				} else {
+					ret = fmt.Sprintf("%s\t%s", ret, de.Error())
+				}
+
+			}
+		}
+	}
+	return ret
+}
+
+// Append a bson key name on a decode error
+func (de *MultiDecodeError) setWrappedDecodeErrorKey(errKey string) {
+	if len(errKey) <= 0 {
+		return
+	}
+	for _, err := range de.wrapped {
+		de, ok := err.(*DecodeError)
+		if ok {
+			de.setWrappedDecodeErrorKey(errKey)
+		}
+	}
+}
+
+// Create a Wrapped decoder error, setting the errKey on all child errors
+// If there is only one child errors, return this one
+func newMultiDecodeError(errKey string, childErrors ...error) error {
+	if len(childErrors) == 0 {
+		return nil
+	} else if len(childErrors) == 1 {
+		if de, ok := childErrors[0].(*DecodeError); ok {
+			de.setWrappedDecodeErrorKey(errKey)
+			return de
+		} else if mde, ok := childErrors[0].(*MultiDecodeError); ok {
+			mde.setWrappedDecodeErrorKey(errKey)
+			return mde
+		} else {
+			ret := &DecodeError{
+				wrapped: childErrors[0],
+			}
+			ret.setWrappedDecodeErrorKey(errKey)
+			return ret
+		}
+	}
+	errs := make([]error, 0)
+	for _, err := range childErrors {
+		if de, ok := err.(*DecodeError); ok {
+			de.setWrappedDecodeErrorKey(errKey)
+			errs = append(errs, de)
+		} else if mde, ok := err.(*MultiDecodeError); ok {
+			umde := mde.Unwrap()
+			if de, ok := umde.(*DecodeError); ok {
+				de.setWrappedDecodeErrorKey(errKey)
+				errs = append(errs, de)
+			} else if mde, ok := umde.(*MultiDecodeError); ok {
+				mde.setWrappedDecodeErrorKey(errKey)
+				errs = append(errs, mde.wrapped...)
+			} else {
+				de := &DecodeError{
+					wrapped: umde,
+				}
+				de.setWrappedDecodeErrorKey(errKey)
+				errs = append(errs, de)
+			}
+		} else {
+			de := &DecodeError{
+				wrapped: err,
+			}
+			de.setWrappedDecodeErrorKey(errKey)
+			errs = append(errs, de)
+		}
+	}
+	return &MultiDecodeError{
+		wrapped: errs,
+	}
+}
+
+// Unwrap returns the underlying errors
+func (de *MultiDecodeError) Unwrap() error {
+	// If we have no errors then we do nothing
+	if de == nil || de.wrapped == nil {
+		return nil
+	}
+	// If we have exactly one error, we can just return that directly.
+	if len(de.wrapped) == 1 {
+		return de.wrapped[0]
+	}
+
+	errs := make([]error, 0)
+	for _, err := range de.wrapped {
+		if de, ok := err.(*DecodeError); ok {
+			errs = append(errs, de)
+		} else if mde, ok := err.(*MultiDecodeError); ok {
+			umde := mde.Unwrap()
+			if de, ok := umde.(*DecodeError); ok {
+				errs = append(errs, de)
+			} else if mde, ok := umde.(*MultiDecodeError); ok {
+				errs = append(errs, mde.wrapped...)
+			}
+		}
+	}
+	return &MultiDecodeError{
+		wrapped: errs,
+	}
+}
+
+// DecodeError represents an error that occurs when unmarshalling BSON bytes into a native Go type.
+type DecodeError struct {
+	keys    []string
+	wrapped error
+}
+
+// Error implements the error interface.
+func (de *DecodeError) Error() string {
+	if de.keys != nil && len(de.keys) > 0 {
+		keyPath := strings.Join(de.Keys(), ".")
+		return fmt.Sprintf("error decoding key \"%s\" : %s", keyPath, de.Unwrap())
+	} else {
+		return fmt.Sprintf("decoding error : %s", de.Unwrap())
+	}
+}
+
+// Append a bson key name on a decode error
+func (de *DecodeError) setWrappedDecodeErrorKey(errKey string) {
+	if len(errKey) <= 0 {
+		return
+	}
+	de.keys = append(de.keys, errKey)
+}
+
+// Unwrap returns the underlying errors
+func (de *DecodeError) Unwrap() error {
+	if de == nil || de.wrapped == nil {
+		return nil
+	}
+
+	return de.wrapped
+}
+
+// Keys returns the BSON key path that caused an error as a slice of strings. The keys in the slice are in top-down
+// order. For example, if the document being unmarshalled was {a: {b: {c: 1}}} and the value for c was supposed to be
+// a string, the keys slice will be ["a", "b", "c"].
+func (de *DecodeError) Keys() []string {
+	reversedKeys := make([]string, 0, len(de.keys))
+	for idx := len(de.keys) - 1; idx >= 0; idx-- {
+		reversedKeys = append(reversedKeys, de.keys[idx])
+	}
+
+	return reversedKeys
+}
+
 // EncodeContext is the contextual information required for a Codec to encode a
 // value.
 type EncodeContext struct {
@@ -353,6 +543,9 @@ func decodeTypeOrValue(decoder ValueDecoder, dc DecodeContext, vr bsonrw.ValueRe
 func decodeTypeOrValueWithInfo(vd ValueDecoder, td typeDecoder, dc DecodeContext, vr bsonrw.ValueReader, t reflect.Type, convert bool) (reflect.Value, error) {
 	if td != nil {
 		val, err := td.decodeType(dc, vr, t)
+		if err != nil || !val.IsValid() {
+			return val, err
+		}
 		if err == nil && convert && val.Type() != t {
 			// This conversion step is necessary for slices and maps. If a user declares variables like:
 			//

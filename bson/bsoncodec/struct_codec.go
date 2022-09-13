@@ -20,37 +20,6 @@ import (
 	"go.mongodb.org/mongo-driver/bson/bsontype"
 )
 
-// DecodeError represents an error that occurs when unmarshalling BSON bytes into a native Go type.
-type DecodeError struct {
-	keys    []string
-	wrapped error
-}
-
-// Unwrap returns the underlying error
-func (de *DecodeError) Unwrap() error {
-	return de.wrapped
-}
-
-// Error implements the error interface.
-func (de *DecodeError) Error() string {
-	// The keys are stored in reverse order because the de.keys slice is builtup while propagating the error up the
-	// stack of BSON keys, so we call de.Keys(), which reverses them.
-	keyPath := strings.Join(de.Keys(), ".")
-	return fmt.Sprintf("error decoding key %s: %v", keyPath, de.wrapped)
-}
-
-// Keys returns the BSON key path that caused an error as a slice of strings. The keys in the slice are in top-down
-// order. For example, if the document being unmarshalled was {a: {b: {c: 1}}} and the value for c was supposed to be
-// a string, the keys slice will be ["a", "b", "c"].
-func (de *DecodeError) Keys() []string {
-	reversedKeys := make([]string, 0, len(de.keys))
-	for idx := len(de.keys) - 1; idx >= 0; idx-- {
-		reversedKeys = append(reversedKeys, de.keys[idx])
-	}
-
-	return reversedKeys
-}
-
 // Zeroer allows custom struct types to implement a report of zero
 // state. All struct types that don't implement Zeroer or where IsZero
 // returns false are considered to be not zero.
@@ -253,19 +222,6 @@ func (sc *StructCodec) EncodeValue(ec EncodeContext, vw bsonrw.ValueWriter, val 
 	return dw.WriteDocumentEnd()
 }
 
-func newDecodeError(key string, original error) error {
-	var de *DecodeError
-	if !errors.As(original, &de) {
-		return &DecodeError{
-			keys:    []string{key},
-			wrapped: original,
-		}
-	}
-
-	de.keys = append(de.keys, key)
-	return de
-}
-
 // DecodeValue implements the Codec interface.
 // By default, map types in val will not be cleared. If a map has existing key/value pairs, it will be extended with the new ones from vr.
 // For slices, the decoder will set the length of the slice to zero and append all elements. The underlying array will not be cleared.
@@ -291,7 +247,15 @@ func (sc *StructCodec) DecodeValue(dc DecodeContext, vr bsonrw.ValueReader, val 
 		val.Set(reflect.Zero(val.Type()))
 		return nil
 	default:
-		return fmt.Errorf("cannot decode %v into a %s", vrType, val.Type())
+		err := vr.Skip()
+		if err != nil {
+			return err
+		}
+		return &TypeDecoderError{
+			Name:     "StructCodec.DecodeType",
+			Types:    []reflect.Type{val.Type()},
+			Received: vrType,
+		}
 	}
 
 	sd, err := sc.describeStruct(dc.Registry, val.Type(), dc.useJSONStructTags, false)
@@ -321,6 +285,7 @@ func (sc *StructCodec) DecodeValue(dc DecodeContext, vr bsonrw.ValueReader, val 
 		return err
 	}
 
+	decodeErrors := make([]error, 0)
 	for {
 		name, vr, err := dr.ReadElement()
 		if errors.Is(err, bsonrw.ErrEOD) {
@@ -375,35 +340,36 @@ func (sc *StructCodec) DecodeValue(dc DecodeContext, vr bsonrw.ValueReader, val 
 
 		if !field.CanSet() { // Being settable is a super set of being addressable.
 			innerErr := fmt.Errorf("field %v is not settable", field)
-			return newDecodeError(fd.name, innerErr)
-		}
-		if field.Kind() == reflect.Ptr && field.IsNil() {
-			field.Set(reflect.New(field.Type().Elem()))
-		}
-		field = field.Addr()
+			decodeErrors = append(decodeErrors, newMultiDecodeError(fd.name, innerErr))
+		} else {
+			if field.Kind() == reflect.Ptr && field.IsNil() {
+				field.Set(reflect.New(field.Type().Elem()))
+			}
+			field = field.Addr()
 
-		dctx := DecodeContext{
-			Registry:            dc.Registry,
-			Truncate:            fd.truncate || dc.Truncate,
-			defaultDocumentType: dc.defaultDocumentType,
-			binaryAsSlice:       dc.binaryAsSlice,
-			useJSONStructTags:   dc.useJSONStructTags,
-			useLocalTimeZone:    dc.useLocalTimeZone,
-			zeroMaps:            dc.zeroMaps,
-			zeroStructs:         dc.zeroStructs,
-		}
+			dctx := DecodeContext{
+				Registry:            dc.Registry,
+				Truncate:            fd.truncate || dc.Truncate,
+				defaultDocumentType: dc.defaultDocumentType,
+				binaryAsSlice:       dc.binaryAsSlice,
+				useJSONStructTags:   dc.useJSONStructTags,
+				useLocalTimeZone:    dc.useLocalTimeZone,
+				zeroMaps:            dc.zeroMaps,
+				zeroStructs:         dc.zeroStructs,
+			}
 
-		if fd.decoder == nil {
-			return newDecodeError(fd.name, ErrNoDecoder{Type: field.Elem().Type()})
-		}
+			if fd.decoder == nil {
+				decodeErrors = append(decodeErrors, newMultiDecodeError(fd.name, ErrNoDecoder{Type: field.Elem().Type()}))
+			} else {
+				if err := fd.decoder.DecodeValue(dctx, vr, field.Elem()); err != nil {
+					decodeErrors = append(decodeErrors, newMultiDecodeError(fd.name, err))
+				}
+			}
 
-		err = fd.decoder.DecodeValue(dctx, vr, field.Elem())
-		if err != nil {
-			return newDecodeError(fd.name, err)
 		}
 	}
 
-	return nil
+	return newMultiDecodeError("", decodeErrors...)
 }
 
 func isEmpty(v reflect.Value, omitZeroStruct bool) bool {

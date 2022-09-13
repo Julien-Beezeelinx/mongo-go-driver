@@ -7,7 +7,6 @@
 package bsoncodec
 
 import (
-	"fmt"
 	"reflect"
 
 	"go.mongodb.org/mongo-driver/bson/bsonoptions"
@@ -77,7 +76,7 @@ func (sc *StringCodec) decodeType(_ DecodeContext, vr bsonrw.ValueReader, t refl
 
 	var str string
 	var err error
-	switch vr.Type() {
+	switch vrType := vr.Type(); vrType {
 	case bsontype.String:
 		str, err = vr.ReadString()
 		if err != nil {
@@ -118,7 +117,15 @@ func (sc *StringCodec) decodeType(_ DecodeContext, vr bsonrw.ValueReader, t refl
 			return emptyValue, err
 		}
 	default:
-		return emptyValue, fmt.Errorf("cannot decode %v into a string type", vr.Type())
+		err := vr.Skip()
+		if err != nil {
+			return emptyValue, err
+		}
+		return emptyValue, &TypeDecoderError{
+			Name:     "StringDecodeType",
+			Kinds:    []reflect.Kind{reflect.String},
+			Received: vrType,
+		}
 	}
 
 	return reflect.ValueOf(str), nil

@@ -186,7 +186,15 @@ func (sc *SliceCodec) DecodeValue(dc DecodeContext, vr bsonrw.ValueReader, val r
 		val.Set(reflect.AppendSlice(val, reflect.ValueOf(byteStr)))
 		return nil
 	default:
-		return fmt.Errorf("cannot decode %v into a slice", vrType)
+		err := vr.Skip()
+		if err != nil {
+			return err
+		}
+		return &TypeDecoderError{
+			Name:     "SliceDecodeType",
+			Kinds:    []reflect.Kind{reflect.Slice},
+			Received: vrType,
+		}
 	}
 
 	var elemsFunc func(DecodeContext, bsonrw.ValueReader, reflect.Value) ([]reflect.Value, error)
@@ -206,9 +214,9 @@ func (sc *SliceCodec) DecodeValue(dc DecodeContext, vr bsonrw.ValueReader, val r
 	if val.IsNil() {
 		val.Set(reflect.MakeSlice(val.Type(), 0, len(elems)))
 	}
-
-	val.SetLen(0)
-	val.Set(reflect.Append(val, elems...))
-
-	return nil
+	if val.IsValid() {
+		val.SetLen(0)
+		val.Set(reflect.Append(val, elems...))
+	}
+	return err
 }
