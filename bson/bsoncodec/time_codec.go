@@ -7,7 +7,6 @@
 package bsoncodec
 
 import (
-	"fmt"
 	"reflect"
 	"time"
 
@@ -92,7 +91,15 @@ func (tc *TimeCodec) decodeType(dc DecodeContext, vr bsonrw.ValueReader, t refle
 			return emptyValue, err
 		}
 	default:
-		return emptyValue, fmt.Errorf("cannot decode %v into a time.Time", vrType)
+		err := vr.Skip()
+		if err != nil {
+			return emptyValue, err
+		}
+		return emptyValue, &TypeDecoderError{
+			Name:     "TimeDecodeType",
+			Types:    []reflect.Type{tTime},
+			Received: vrType,
+		}
 	}
 
 	if !tc.UseLocalTimeZone {
@@ -111,8 +118,9 @@ func (tc *TimeCodec) DecodeValue(dc DecodeContext, vr bsonrw.ValueReader, val re
 	if err != nil {
 		return err
 	}
-
-	val.Set(elem)
+	if elem.IsValid() {
+		val.Set(elem)
+	}
 	return nil
 }
 

@@ -7,7 +7,6 @@
 package bsoncodec
 
 import (
-	"fmt"
 	"reflect"
 
 	"go.mongodb.org/mongo-driver/bson/bsonoptions"
@@ -86,7 +85,15 @@ func (bsc *ByteSliceCodec) decodeType(dc DecodeContext, vr bsonrw.ValueReader, t
 	case bsontype.Undefined:
 		err = vr.ReadUndefined()
 	default:
-		return emptyValue, fmt.Errorf("cannot decode %v into a []byte", vrType)
+		err := vr.Skip()
+		if err != nil {
+			return emptyValue, err
+		}
+		return emptyValue, &TypeDecoderError{
+			Name:     "ByteSliceDecodeType",
+			Types:    []reflect.Type{tByteSlice},
+			Received: vrType,
+		}
 	}
 	if err != nil {
 		return emptyValue, err
@@ -105,7 +112,8 @@ func (bsc *ByteSliceCodec) DecodeValue(dc DecodeContext, vr bsonrw.ValueReader, 
 	if err != nil {
 		return err
 	}
-
-	val.Set(elem)
+	if elem.IsValid() {
+		val.Set(elem)
+	}
 	return nil
 }

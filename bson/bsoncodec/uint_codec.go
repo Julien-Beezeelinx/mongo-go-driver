@@ -110,7 +110,15 @@ func (uic *UIntCodec) decodeType(dc DecodeContext, vr bsonrw.ValueReader, t refl
 			return emptyValue, err
 		}
 	default:
-		return emptyValue, fmt.Errorf("cannot decode %v into an integer type", vrType)
+		err := vr.Skip()
+		if err != nil {
+			return emptyValue, err
+		}
+		return emptyValue, &TypeDecoderError{
+			Name:     "UintDecodeType",
+			Kinds:    []reflect.Kind{reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uint},
+			Received: vrType,
+		}
 	}
 
 	switch t.Kind() {
@@ -168,6 +176,8 @@ func (uic *UIntCodec) DecodeValue(dc DecodeContext, vr bsonrw.ValueReader, val r
 		return err
 	}
 
-	val.SetUint(elem.Uint())
+	if elem.IsValid() {
+		val.SetUint(elem.Uint())
+	}
 	return nil
 }

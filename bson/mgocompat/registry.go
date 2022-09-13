@@ -47,6 +47,8 @@ func NewRegistryBuilder() *bsoncodec.RegistryBuilder {
 	bsoncodec.DefaultValueDecoders{}.RegisterDefaultDecoders(rb)
 	bson.PrimitiveCodecs{}.RegisterPrimitiveCodecs(rb)
 
+	rb.SetIgnoreDecodingError(true)
+
 	structcodec, _ := bsoncodec.NewStructCodec(bsoncodec.DefaultStructTagParser,
 		bsonoptions.StructCodec().
 			SetDecodeZeroStruct(true).

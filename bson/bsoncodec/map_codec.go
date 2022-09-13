@@ -151,7 +151,15 @@ func (mc *MapCodec) DecodeValue(dc DecodeContext, vr bsonrw.ValueReader, val ref
 		val.Set(reflect.Zero(val.Type()))
 		return vr.ReadUndefined()
 	default:
-		return fmt.Errorf("cannot decode %v into a %s", vrType, val.Type())
+		err := vr.Skip()
+		if err != nil {
+			return err
+		}
+		return &TypeDecoderError{
+			Name:     "MapDecodeType",
+			Kinds:    []reflect.Kind{reflect.Map},
+			Received: vrType,
+		}
 	}
 
 	dr, err := vr.ReadDocument()
@@ -180,6 +188,7 @@ func (mc *MapCodec) DecodeValue(dc DecodeContext, vr bsonrw.ValueReader, val ref
 
 	keyType := val.Type().Key()
 
+	decodeErrors := make([]error, 0)
 	for {
 		key, vr, err := dr.ReadElement()
 		if err == bsonrw.ErrEOD {
@@ -191,17 +200,22 @@ func (mc *MapCodec) DecodeValue(dc DecodeContext, vr bsonrw.ValueReader, val ref
 
 		k, err := mc.decodeKey(key, keyType)
 		if err != nil {
-			return err
+			decodeErrors = append(decodeErrors, newMultiDecodeError(key, err))
+		} else {
+			elem, err := decodeTypeOrValueWithInfo(decoder, eTypeDecoder, dc, vr, eType, true)
+			if err != nil {
+				decodeErrors = append(decodeErrors, newMultiDecodeError(key, err))
+			}
+			if elem.IsValid() {
+				val.SetMapIndex(k, elem)
+			}
 		}
-
-		elem, err := decodeTypeOrValueWithInfo(decoder, eTypeDecoder, dc, vr, eType, true)
-		if err != nil {
-			return newDecodeError(key, err)
-		}
-
-		val.SetMapIndex(k, elem)
 	}
-	return nil
+	if len(decodeErrors) > 0 {
+		return newMultiDecodeError("", decodeErrors...)
+	} else {
+		return nil
+	}
 }
 
 func clearMap(m reflect.Value) {
@@ -257,6 +271,14 @@ func (mc *MapCodec) encodeKey(val reflect.Value) (string, error) {
 var keyUnmarshalerType = reflect.TypeOf((*KeyUnmarshaler)(nil)).Elem()
 var textUnmarshalerType = reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem()
 
+type decodeMapKeyError struct {
+	KeyType reflect.Type
+}
+
+func (d decodeMapKeyError) Error() string {
+	return fmt.Sprintf("unsupported key type: %v", d.KeyType)
+}
+
 func (mc *MapCodec) decodeKey(key string, keyType reflect.Type) (reflect.Value, error) {
 	keyVal := reflect.ValueOf(key)
 	var err error
@@ -302,7 +324,7 @@ func (mc *MapCodec) decodeKey(key string, keyType reflect.Type) (reflect.Value, 
 			}
 			fallthrough
 		default:
-			return keyVal, fmt.Errorf("unsupported key type: %v", keyType)
+			return keyVal, &decodeMapKeyError{KeyType: keyType}
 		}
 	}
 	return keyVal, err
