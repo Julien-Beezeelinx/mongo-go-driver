@@ -340,7 +340,7 @@ func (sc *StructCodec) DecodeValue(dc DecodeContext, vr bsonrw.ValueReader, val 
 
 		if !field.CanSet() { // Being settable is a super set of being addressable.
 			innerErr := fmt.Errorf("field %v is not settable", field)
-			decodeErrors = append(decodeErrors, newMultiDecodeError(fd.name, innerErr))
+			decodeErrors = append(decodeErrors, NewMultiDecodeError(fd.name, innerErr))
 		} else {
 			if field.Kind() == reflect.Ptr && field.IsNil() {
 				field.Set(reflect.New(field.Type().Elem()))
@@ -359,17 +359,17 @@ func (sc *StructCodec) DecodeValue(dc DecodeContext, vr bsonrw.ValueReader, val 
 			}
 
 			if fd.decoder == nil {
-				decodeErrors = append(decodeErrors, newMultiDecodeError(fd.name, ErrNoDecoder{Type: field.Elem().Type()}))
+				decodeErrors = append(decodeErrors, NewMultiDecodeError(fd.name, ErrNoDecoder{Type: field.Elem().Type()}))
 			} else {
 				if err := fd.decoder.DecodeValue(dctx, vr, field.Elem()); err != nil {
-					decodeErrors = append(decodeErrors, newMultiDecodeError(fd.name, err))
+					decodeErrors = append(decodeErrors, NewMultiDecodeError(fd.name, err))
 				}
 			}
 
 		}
 	}
 
-	return newMultiDecodeError("", decodeErrors...)
+	return NewMultiDecodeError("", decodeErrors...)
 }
 
 func isEmpty(v reflect.Value, omitZeroStruct bool) bool {

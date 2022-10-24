@@ -234,11 +234,11 @@ func (mc *MapCodec) DecodeValue(dc DecodeContext, vr bsonrw.ValueReader, val ref
 
 		k, err := mc.decodeKey(key, keyType)
 		if err != nil {
-			decodeErrors = append(decodeErrors, newMultiDecodeError(key, err))
+			decodeErrors = append(decodeErrors, NewMultiDecodeError(key, err))
 		} else {
 			elem, err := decodeTypeOrValueWithInfo(decoder, eTypeDecoder, dc, vr, eType, true)
 			if err != nil {
-				decodeErrors = append(decodeErrors, newMultiDecodeError(key, err))
+				decodeErrors = append(decodeErrors, NewMultiDecodeError(key, err))
 			}
 			if elem.IsValid() {
 				val.SetMapIndex(k, elem)
@@ -246,10 +246,10 @@ func (mc *MapCodec) DecodeValue(dc DecodeContext, vr bsonrw.ValueReader, val ref
 		}
 	}
 	if len(decodeErrors) > 0 {
-		return newMultiDecodeError("", decodeErrors...)
-	} else {
-		return nil
+		return NewMultiDecodeError("", decodeErrors...)
 	}
+
+	return nil
 }
 
 func clearMap(m reflect.Value) {

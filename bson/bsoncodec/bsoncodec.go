@@ -140,7 +140,7 @@ func (tde TypeDecoderError) Error() string {
 	return fmt.Sprintf("cannot decode %s into a %s", tde.Received.String(), strings.Join(typeKinds, ", "))
 }
 
-// MultiDecodeError represents mutliple wrapped DecodeError that occurs when unmarshalling BSON bytes into a native Go type.
+// MultiDecodeError represents multiple wrapped DecodeError that occurs when unmarshalling BSON bytes into a native Go type.
 type MultiDecodeError struct {
 	wrapped []error
 }
@@ -178,9 +178,20 @@ func (de *MultiDecodeError) setWrappedDecodeErrorKey(errKey string) {
 	}
 }
 
-// Create a Wrapped decoder error, setting the errKey on all child errors
+// IsDecodeError returns the wrapped DecodeError and true if the passed error is a DecodeError
+func IsDecodeError(err error) (error, bool) {
+	if _, ok := err.(*DecodeError); ok {
+		return err, true
+	} else if _, ok := err.(*MultiDecodeError); ok {
+		return err, true
+	} else {
+		return nil, false
+	}
+}
+
+// NewMultiDecodeError Create a Wrapped decoder error, setting the errKey on all child errors
 // If there is only one child errors, return this one
-func newMultiDecodeError(errKey string, childErrors ...error) error {
+func NewMultiDecodeError(errKey string, childErrors ...error) error {
 	if len(childErrors) == 0 {
 		return nil
 	} else if len(childErrors) == 1 {
@@ -271,9 +282,9 @@ func (de *DecodeError) Error() string {
 	if de.keys != nil && len(de.keys) > 0 {
 		keyPath := strings.Join(de.Keys(), ".")
 		return fmt.Sprintf("error decoding key \"%s\" : %s", keyPath, de.Unwrap())
-	} else {
-		return fmt.Sprintf("decoding error : %s", de.Unwrap())
 	}
+
+	return fmt.Sprintf("decoding error : %s", de.Unwrap())
 }
 
 // Append a bson key name on a decode error

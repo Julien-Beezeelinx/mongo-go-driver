@@ -132,27 +132,7 @@ func (d *Decoder) Decode(val interface{}) error {
 	}
 
 	err = decoder.DecodeValue(d.dc, d.vr, rval)
-	if err != nil {
-		if e, ok := err.(*bsoncodec.DecodeError); ok {
-			if d.dc.Registry.IgnoreDecodingError() {
-				fmt.Println(e)
-				return nil
-			} else {
-				return e
-			}
-		} else if e, ok := err.(*bsoncodec.MultiDecodeError); ok {
-			if d.dc.Registry.IgnoreDecodingError() {
-				fmt.Println(e)
-				return nil
-			} else {
-				return e
-			}
-		} else {
-			return err
-		}
-	} else {
-		return err
-	}
+	return err
 }
 
 // Reset will reset the state of the decoder, using the same *DecodeContext used in
