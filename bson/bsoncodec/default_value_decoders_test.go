@@ -91,8 +91,12 @@ func TestDefaultValueDecoders(t *testing.T) {
 					bool(false),
 					nil,
 					&bsonrwtest.ValueReaderWriter{BSONType: bsontype.String},
-					bsonrwtest.Nothing,
-					fmt.Errorf("cannot decode %v into a boolean", bsontype.String),
+					bsonrwtest.Skip,
+					&TypeDecoderError{
+						Name:     "BooleanDecodeType",
+						Kinds:    []reflect.Kind{reflect.Bool},
+						Received: bsontype.String,
+					},
 				},
 				{
 					"fast path",
@@ -164,8 +168,12 @@ func TestDefaultValueDecoders(t *testing.T) {
 					0,
 					nil,
 					&bsonrwtest.ValueReaderWriter{BSONType: bsontype.String},
-					bsonrwtest.Nothing,
-					fmt.Errorf("cannot decode %v into an integer type", bsontype.String),
+					bsonrwtest.Skip,
+					&TypeDecoderError{
+						Name:     "IntDecodeType",
+						Kinds:    []reflect.Kind{reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Int},
+						Received: bsontype.String,
+					},
 				},
 				{
 					"ReadInt32 error",
@@ -396,8 +404,12 @@ func TestDefaultValueDecoders(t *testing.T) {
 					0,
 					nil,
 					&bsonrwtest.ValueReaderWriter{BSONType: bsontype.String},
-					bsonrwtest.Nothing,
-					fmt.Errorf("cannot decode %v into an integer type", bsontype.String),
+					bsonrwtest.Skip,
+					&TypeDecoderError{
+						Name:     "UintDecodeType",
+						Kinds:    []reflect.Kind{reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uint},
+						Received: bsontype.String,
+					},
 				},
 				{
 					"ReadInt32 error",
@@ -632,8 +644,12 @@ func TestDefaultValueDecoders(t *testing.T) {
 					0,
 					nil,
 					&bsonrwtest.ValueReaderWriter{BSONType: bsontype.String},
-					bsonrwtest.Nothing,
-					fmt.Errorf("cannot decode %v into a float32 or float64 type", bsontype.String),
+					bsonrwtest.Skip,
+					&TypeDecoderError{
+						Name:     "FloatDecodeType",
+						Kinds:    []reflect.Kind{reflect.Float32, reflect.Float64},
+						Received: bsontype.String,
+					},
 				},
 				{
 					"ReadDouble error",
@@ -811,8 +827,8 @@ func TestDefaultValueDecoders(t *testing.T) {
 					map[bool]interface{}{},
 					&DecodeContext{Registry: buildDefaultRegistry()},
 					&bsonrwtest.ValueReaderWriter{},
-					bsonrwtest.ReadElement,
-					fmt.Errorf("unsupported key type: %T", false),
+					bsonrwtest.Skip,
+					&decodeMapKeyError{KeyType: reflect.TypeOf(false)},
 				},
 				{
 					"ReadDocument Error",

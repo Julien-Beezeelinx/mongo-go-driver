@@ -66,8 +66,6 @@ type RegistryBuilder struct {
 	kindDecoders      map[reflect.Kind]ValueDecoder
 
 	typeMap map[bsontype.Type]reflect.Type
-
-	ignoreDecodingError bool
 }
 
 // A Registry is used to store and retrieve codecs for types and interfaces. This type is the main
@@ -85,8 +83,6 @@ type Registry struct {
 	typeMap map[bsontype.Type]reflect.Type
 
 	mu sync.RWMutex
-
-	ignoreDecodingError bool
 }
 
 // NewRegistryBuilder creates a new empty RegistryBuilder.
@@ -265,12 +261,6 @@ func (rb *RegistryBuilder) RegisterTypeMapEntry(bt bsontype.Type, rt reflect.Typ
 	return rb
 }
 
-// Do not return decoding errors to unmarshaller function
-func (rb *RegistryBuilder) SetIgnoreDecodingError(val bool) *RegistryBuilder {
-	rb.ignoreDecodingError = val
-	return rb
-}
-
 // Build creates a Registry from the current state of this RegistryBuilder.
 func (rb *RegistryBuilder) Build() *Registry {
 	registry := new(Registry)
@@ -306,16 +296,7 @@ func (rb *RegistryBuilder) Build() *Registry {
 		registry.typeMap[bt] = rt
 	}
 
-	if rb.ignoreDecodingError {
-		registry.ignoreDecodingError = rb.ignoreDecodingError
-	} else {
-		registry.ignoreDecodingError = false
-	}
-
 	return registry
-}
-func (r *Registry) IgnoreDecodingError() bool {
-	return r.ignoreDecodingError
 }
 
 // LookupEncoder inspects the registry for an encoder for the given type. The lookup precedence works as follows:
