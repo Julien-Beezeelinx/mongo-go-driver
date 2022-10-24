@@ -187,7 +187,7 @@ func (dvd DefaultValueDecoders) DDecodeValue(dc DecodeContext, vr bsonrw.ValueRe
 		// Pass false for convert because we don't need to call reflect.Value.Convert for tEmpty.
 		elem, err := decodeTypeOrValueWithInfo(decoder, tEmptyTypeDecoder, dc, elemVr, tEmpty, false)
 		if err != nil {
-			decodeErrors = append(decodeErrors, newMultiDecodeError(key, err))
+			decodeErrors = append(decodeErrors, NewMultiDecodeError(key, err))
 		}
 		if elem.IsValid() {
 			elems = append(elems, primitive.E{Key: key, Value: elem.Interface()})
@@ -195,7 +195,7 @@ func (dvd DefaultValueDecoders) DDecodeValue(dc DecodeContext, vr bsonrw.ValueRe
 	}
 
 	val.Set(reflect.ValueOf(elems))
-	return newMultiDecodeError("", decodeErrors...)
+	return NewMultiDecodeError("", decodeErrors...)
 }
 
 func (dvd DefaultValueDecoders) booleanDecodeType(dctx DecodeContext, vr bsonrw.ValueReader, t reflect.Type) (reflect.Value, error) {
@@ -1530,13 +1530,13 @@ func (dvd DefaultValueDecoders) MapDecodeValue(dc DecodeContext, vr bsonrw.Value
 
 		err = decoder.DecodeValue(dc, vr, elem)
 		if err != nil {
-			decodeErrors = append(decodeErrors, newMultiDecodeError(key, err))
+			decodeErrors = append(decodeErrors, NewMultiDecodeError(key, err))
 		}
 		if elem.IsValid() {
 			val.SetMapIndex(reflect.ValueOf(key).Convert(keyType), elem)
 		}
 	}
-	return newMultiDecodeError("", decodeErrors...)
+	return NewMultiDecodeError("", decodeErrors...)
 }
 
 // ArrayDecodeValue is the ValueDecoderFunc for array types.
@@ -1827,7 +1827,7 @@ func (dvd DefaultValueDecoders) decodeDefault(dc DecodeContext, vr bsonrw.ValueR
 
 		elem, err := decodeTypeOrValueWithInfo(decoder, eTypeDecoder, dc, vr, eType, true)
 		if err != nil {
-			decodeErrors = append(decodeErrors, newMultiDecodeError("["+strconv.Itoa(idx)+"]", err))
+			decodeErrors = append(decodeErrors, NewMultiDecodeError("["+strconv.Itoa(idx)+"]", err))
 		}
 		if elem.IsValid() {
 			elems = append(elems, elem)
@@ -1836,7 +1836,7 @@ func (dvd DefaultValueDecoders) decodeDefault(dc DecodeContext, vr bsonrw.ValueR
 		idx++
 	}
 
-	return elems, newMultiDecodeError("", decodeErrors...)
+	return elems, NewMultiDecodeError("", decodeErrors...)
 }
 
 func (dvd DefaultValueDecoders) readCodeWithScope(dc DecodeContext, vr bsonrw.ValueReader) (primitive.CodeWithScope, error) {
@@ -1958,11 +1958,11 @@ func (DefaultValueDecoders) decodeElemsFromDocumentReader(dc DecodeContext, dr b
 
 		val := reflect.New(tEmpty).Elem()
 		if err := decoder.DecodeValue(dc, vr, val); err != nil {
-			decodeErrors = append(decodeErrors, newMultiDecodeError(key, err))
+			decodeErrors = append(decodeErrors, NewMultiDecodeError(key, err))
 		}
 		if val.IsValid() {
 			elems = append(elems, reflect.ValueOf(primitive.E{Key: key, Value: val.Interface()}))
 		}
 	}
-	return elems, newMultiDecodeError("", decodeErrors...)
+	return elems, NewMultiDecodeError("", decodeErrors...)
 }
