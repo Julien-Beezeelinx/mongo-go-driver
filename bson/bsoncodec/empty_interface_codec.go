@@ -129,7 +129,7 @@ func (eic EmptyInterfaceCodec) decodeType(dc DecodeContext, vr bsonrw.ValueReade
 
 	rtype, err := eic.getEmptyInterfaceDecodeType(dc, vr.Type())
 	if err != nil {
-		switch vr.Type() {
+		switch vrType := vr.Type(); vrType {
 		case bsontype.Null:
 			return reflect.Zero(t), vr.ReadNull()
 		default:
@@ -167,7 +167,8 @@ func (eic EmptyInterfaceCodec) DecodeValue(dc DecodeContext, vr bsonrw.ValueRead
 	if err != nil {
 		return err
 	}
-
-	val.Set(elem)
+	if elem.IsValid() {
+		val.Set(elem)
+	}
 	return nil
 }

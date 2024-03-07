@@ -71,7 +71,8 @@ var ErrNotInterface = errors.New("The provided type is not an interface")
 //
 // Deprecated: Use Registry instead.
 type RegistryBuilder struct {
-	registry *Registry
+	registry            *Registry
+	ignoreDecodingError bool
 }
 
 // NewRegistryBuilder creates a new empty RegistryBuilder.
@@ -224,6 +225,13 @@ func (rb *RegistryBuilder) Build() *Registry {
 		kindEncoders:      rb.registry.kindEncoders.Clone(),
 		kindDecoders:      rb.registry.kindDecoders.Clone(),
 	}
+
+	if rb.ignoreDecodingError {
+		r.ignoreDecodingError = rb.ignoreDecodingError
+	} else {
+		r.ignoreDecodingError = false
+	}
+
 	rb.registry.typeMap.Range(func(k, v interface{}) bool {
 		if k != nil && v != nil {
 			r.typeMap.Store(k, v)
@@ -236,13 +244,14 @@ func (rb *RegistryBuilder) Build() *Registry {
 // A Registry is used to store and retrieve codecs for types and interfaces. This type is the main
 // typed passed around and Encoders and Decoders are constructed from it.
 type Registry struct {
-	interfaceEncoders []interfaceValueEncoder
-	interfaceDecoders []interfaceValueDecoder
-	typeEncoders      *typeEncoderCache
-	typeDecoders      *typeDecoderCache
-	kindEncoders      *kindEncoderCache
-	kindDecoders      *kindDecoderCache
-	typeMap           sync.Map // map[bsontype.Type]reflect.Type
+	interfaceEncoders   []interfaceValueEncoder
+	interfaceDecoders   []interfaceValueDecoder
+	typeEncoders        *typeEncoderCache
+	typeDecoders        *typeDecoderCache
+	kindEncoders        *kindEncoderCache
+	kindDecoders        *kindDecoderCache
+	typeMap             sync.Map // map[bsontype.Type]reflect.Type
+	ignoreDecodingError bool
 }
 
 // NewRegistry creates a new empty Registry.
@@ -372,6 +381,16 @@ func (r *Registry) RegisterInterfaceDecoder(iface reflect.Type, dec ValueDecoder
 //	reg.RegisterTypeMapEntry(bsontype.EmbeddedDocument, reflect.TypeOf(bson.Raw{}))
 func (r *Registry) RegisterTypeMapEntry(bt bsontype.Type, rt reflect.Type) {
 	r.typeMap.Store(bt, rt)
+}
+
+// Do not return decoding errors to unmarshaller function
+func (rb *RegistryBuilder) SetIgnoreDecodingError(val bool) *RegistryBuilder {
+	rb.ignoreDecodingError = val
+	return rb
+}
+
+func (r *Registry) IgnoreDecodingError() bool {
+	return r.ignoreDecodingError
 }
 
 // LookupEncoder returns the first matching encoder in the Registry. It uses the following lookup

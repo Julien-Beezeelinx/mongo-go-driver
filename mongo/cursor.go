@@ -314,11 +314,16 @@ func (c *Cursor) All(ctx context.Context, results interface{}) error {
 	// completes even if the context passed to All has errored.
 	defer c.Close(context.Background())
 
+	decodeErrors := make([]error, 0)
 	batch := c.batch // exhaust the current batch before iterating the batch cursor
 	for {
 		sliceVal, index, err = c.addFromBatch(sliceVal, elementType, batch, index)
 		if err != nil {
-			return err
+			if e, ok := bsoncodec.IsDecodeError(err); ok {
+				decodeErrors = append(decodeErrors, bsoncodec.NewMultiDecodeError("", e))
+			} else {
+				return err
+			}
 		}
 
 		if !c.bc.Next(ctx) {
@@ -333,7 +338,7 @@ func (c *Cursor) All(ctx context.Context, results interface{}) error {
 	}
 
 	resultsVal.Elem().Set(sliceVal.Slice(0, index))
-	return nil
+	return bsoncodec.NewMultiDecodeError("", decodeErrors...)
 }
 
 // RemainingBatchLength returns the number of documents left in the current batch. If this returns zero, the subsequent
@@ -352,6 +357,7 @@ func (c *Cursor) addFromBatch(sliceVal reflect.Value, elemType reflect.Type, bat
 		return sliceVal, index, err
 	}
 
+	decodeErrors := make([]error, 0)
 	for _, doc := range docs {
 		if sliceVal.Len() == index {
 			// slice is full
@@ -367,13 +373,16 @@ func (c *Cursor) addFromBatch(sliceVal reflect.Value, elemType reflect.Type, bat
 		}
 		err = dec.Decode(currElem)
 		if err != nil {
-			return sliceVal, index, err
+			if e, ok := bsoncodec.IsDecodeError(err); ok {
+				decodeErrors = append(decodeErrors, bsoncodec.NewMultiDecodeError("", e))
+			} else {
+				return sliceVal, index, err
+			}
 		}
-
 		index++
 	}
 
-	return sliceVal, index, nil
+	return sliceVal, index, bsoncodec.NewMultiDecodeError("", decodeErrors...)
 }
 
 func (c *Cursor) closeImplicitSession() {
